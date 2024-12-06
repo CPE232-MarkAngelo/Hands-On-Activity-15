@@ -1,0 +1,89 @@
+# Horizon
+
+- name: install openstack-dashboard
+  apt:
+    name: openstack-dashboard
+    state: latest
+
+- name: configuring dashboard to use OpenStack services on the controller node
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    regexp: '{{ item.regexp }}'
+    line: '{{ item.line }}'
+  with_items:
+  - { regexp: 'OPENSTACK_HOST = 127.0.0.1', line: 'OPENSTACK_HOST = "controller"'}
+  - { regexp: "ALLOWED_HOSTS = '*'", line: "ALLOW_HOSTS = ['one.example.com', 'two.example.com']"}
+
+- name: configuring the memcached session storage service
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    regexp: '{{ item.regexp }}'
+    line: '{{ item.line }}'
+  with_items:
+  - { regexp: "#SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'", line: "SESSION_ENGINE = 'django.contrib.sessions.backends.cache'"}
+  - { regexp: "       'LOCATION': '127.0.0.1:11211',", line: "       'LOCATION': 'controller:11211',"}
+
+- name: enabling the identity API version 3
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    regexp: 'OPENSTACK_KEYSTONE_URL = "http://%s/identity/v3" % OPENSTACK_HOST'
+    line: 'OPENSTACK_KEYSTONE_URL = "http://%s/identity/v3" % OPENSTACK_HOST'
+
+- name: enabling support for domains
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    insertafter: 'OPENSTACK_KEYSTONE_URL = "http://%s/identity/v3" % OPENSTACK_HOST'
+    line: 'OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True'
+
+- name: configuring API versions
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    insertafter: 'OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True'
+    line: '{{ item }}'
+  with_items:
+  - 'OPENSTACK_API_VERSIONS = {'
+  - '    "identity": 3,'
+  - '    "image": 2,'
+  - '    "volume": 3,'
+  - '}'
+
+- name: configuring defaultas the default domain for users
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    line: '{{ item }}'
+  with_items:
+  - 'OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = "Default"'
+  - 'OPENSTACK_KEYSTONE_DEFAULT_ROLE = "user"'
+
+- name: disabling support for layer-3 networking services
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    line: '{{ item }}'
+  with_items:
+  - 'OPENSTACK_NEUTRON_NETWORK = {'
+  - '    ...'
+  - "    'enable_router': False,"
+  - "    'enable_quotas': False,"
+  - "    'enable_ipv6': False,"
+  - "    'enable_distributed_router': False,"
+  - "    'enable_ha_router': False,"
+  - "    'enable_fip_topology_check': False,"
+  - "}"
+
+- name: adding wsgi application group
+  lineinfile:
+    path: /etc/openstack-dashboard/local_settings.py
+    state: present
+    line: 'WSIApplicationGroup %{GLOBAL}'
+
+- name: reloading web server configurations
+  service:
+    name: apache2.service
+    state: reloaded

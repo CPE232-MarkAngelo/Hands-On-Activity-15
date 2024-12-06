@@ -1,0 +1,77 @@
+# Cinder
+
+- name: install the packages
+  apt:
+    name:
+      - cinder-api
+      - cinder-scheduler
+    state: latest
+
+- name: configuring database section
+  lineinfile:
+    path: /etc/cinder/cinder.conf
+    state: present
+    insertafter: '{{ item.after }}'
+    line: '{{ item.line }}'
+  with_items:
+  - { after: '[database]', line: 'connection = mysql+pymsql://cinder:CINDER_DBPASS@controller/cinder'}
+  - { after: '[DEFAULT]', line: 'transport_url = rabbit://openstack:RABBIT_PASS@controller'}
+
+- name: adding keystone_authtoken section to cinder.conf
+  lineinfile:
+    path: /etc/cinder/cinder.conf
+    state: present
+    line: '{{ item }}'
+  with_items:
+  - 'www_authenticate_uri = http://controller:5000'
+  - 'auth_url = http://controller:5000'
+  - 'memcached_servers = controller:11211'
+  - 'auth_type = password'
+  - 'project_domain_id = default'
+  - 'user_domain_id = default'
+  - 'project_name = service'
+  - 'username = cinder'
+  - 'password = CINDER_PASS'
+
+- name: configuring my_ip option in default section
+  lineinfile:
+    path: /etc/cinder/cinder.conf
+    state: present
+    insertafter: '[DEFAULT]'
+    line: 'my_ip = 10.0.0.11'
+
+- name: adding oslo_concurrency in cinder.conf
+  lineinfile:
+    path: /etc/cinder/cinder.conf
+    state: present
+    line: '{{ item }}'
+  with_items:
+  - '[oslo_concurrency]'
+  - 'lock_path = /var/lib/cinder/tmp'
+
+- name: populating the block storage database
+  shell:
+    sudo su -s /bin/sh -c "cinder-manage db sync" cinder
+  failed_when: false
+  no_log: True
+
+# Configure compute to use block storage
+
+- name: adding os region name to cinder section from nova.conf
+  lineinfile:
+    path: /etc/nova/nova.conf
+    state: present
+    insertafter: '[cinder]'
+    line: 'os_region_name = RegionOne'
+
+# Finalized installation
+
+#- name: restarting the compute API service
+#  service:
+#    name: nova-api
+#    state: restarted
+
+#- name: restarting the block storage services
+#  shell:
+#    service cinder-scheduler restart
+#    service apache2 restart
